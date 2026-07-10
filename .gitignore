@@ -15,7 +15,9 @@ models/
 # Generated / large data
 data/raw/
 data/index/
-data/web_cache/
+data/web_cache/*
+# Bundle the scraped official-site cache so deploys skip the slow startup scrape
+!data/web_cache/srki_web_cache.json
 data/processed/*.json
 !data/processed/.gitkeep
 # Keep the small serving artifacts so the app works on deploy without trained models
