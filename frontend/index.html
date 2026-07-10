@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EduBot — Educational Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">🎓</div>
+        <div>
+          <h1>EduBot</h1>
+          <p>Educational Assistant</p>
+        </div>
+      </div>
+
+      <label class="field-label" for="institution">Institution</label>
+      <select id="institution"></select>
+
+      <div class="hint-card">
+        <h3>Try asking</h3>
+        <ul id="suggestions">
+          <li>What is the admission process?</li>
+          <li>Tell me about the fee structure</li>
+          <li>Which courses are offered?</li>
+          <li>How do I contact the college?</li>
+        </ul>
+      </div>
+
+      <div class="status">
+        <span id="status-dot" class="dot"></span>
+        <span id="status-text">Connecting…</span>
+      </div>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-header">
+        <div>
+          <h2 id="chat-title">Educational Assistant</h2>
+          <p id="chat-subtitle">Ask me anything about admissions, courses, fees & more</p>
+        </div>
+      </header>
+
+      <div id="messages" class="messages"></div>
+
+      <form id="chat-form" class="composer">
+        <input
+          id="input"
+          type="text"
+          autocomplete="off"
+          placeholder="Type your question…"
+        />
+        <button type="submit" id="send-btn" aria-label="Send">➤</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

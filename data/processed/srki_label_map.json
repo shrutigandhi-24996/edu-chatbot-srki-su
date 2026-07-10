@@ -1,0 +1,15 @@
+{
+  "labels": [
+    "admission_query",
+    "contact_info",
+    "course_info",
+    "event_info",
+    "exam_schedule",
+    "faculty_info",
+    "fee_structure",
+    "general_greeting",
+    "infrastructure_info",
+    "placement_info",
+    "result_query"
+  ]
+}

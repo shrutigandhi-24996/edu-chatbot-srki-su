@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.env
+*.log
+
+# Trained models (pull from Hugging Face Hub instead of committing)
+models/
+*.pt
+*.bin
+*.safetensors
+
+# Generated / large data
+data/raw/
+data/index/
+data/web_cache/
+data/processed/*.json
+!data/processed/.gitkeep
+# Keep the small serving artifacts so the app works on deploy without trained models
+!data/processed/*_label_map.json
+!data/processed/*_intent_examples.json
+*.db
+
+# Notebooks output
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
