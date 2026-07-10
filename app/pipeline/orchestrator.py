@@ -14,7 +14,7 @@ _GREETING_TEMPLATE = (
     "campus facilities.\n\nWhat would you like to know?"
 )
 
-_MIN_RETRIEVAL_SCORE = 0.30
+_MIN_RETRIEVAL_SCORE = 0.08 if settings.lite_mode else 0.30
 
 
 class InstitutionAssistant:
@@ -132,6 +132,9 @@ class Orchestrator:
         if inst.code not in self._assistants:
             self._assistants[inst.code] = InstitutionAssistant(inst)
         return self._assistants[inst.code]
+
+    def is_built(self, code: str | None) -> bool:
+        return settings.institution(code).code in self._assistants
 
     def chat(self, message: str, institution: str | None = None) -> dict:
         assistant = self.get(institution)

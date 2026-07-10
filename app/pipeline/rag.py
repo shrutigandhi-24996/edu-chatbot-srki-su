@@ -26,6 +26,7 @@ class Retriever:
         self._index = None
         self._embedder = None
         self._matrix = None  # numpy fallback matrix when FAISS index absent
+        self._tfidf = None  # (vectorizer, matrix) for lite mode
         self.backend = "empty"
         self._load()
 
@@ -34,15 +35,20 @@ class Retriever:
         return settings.index_dir / self.code.lower()
 
     def _load(self) -> None:
+        if settings.lite_mode:
+            self._build_tfidf()
+            return
         if self._load_faiss():
             return
-        self._build_in_memory()
+        if not self._build_in_memory():
+            # sentence-transformers unavailable -> lightweight fallback
+            self._build_tfidf()
 
     def _get_embedder(self):
         if self._embedder is None:
-            from sentence_transformers import SentenceTransformer
+            from app.pipeline.embedding import get_shared_embedder
 
-            self._embedder = SentenceTransformer(settings.embedding_model)
+            self._embedder = get_shared_embedder()
         return self._embedder
 
     def _load_faiss(self) -> bool:
@@ -64,11 +70,11 @@ class Retriever:
             print(f"[rag] FAISS load failed: {exc}")
             return False
 
-    def _build_in_memory(self) -> None:
+    def _build_in_memory(self) -> bool:
         docs = self._collect_documents(limit=_FALLBACK_MAX_DOCS)
         if not docs:
             self.backend = "empty (run scripts/build_index.py)"
-            return
+            return False
         try:
             import numpy as np
 
@@ -80,8 +86,28 @@ class Retriever:
             self._matrix = np.asarray(emb, dtype="float32")
             self.documents = docs
             self.backend = f"in-memory ({len(docs)} docs)"
+            return True
         except Exception as exc:  # pragma: no cover
             print(f"[rag] in-memory build failed: {exc}")
+            return False
+
+    def _build_tfidf(self) -> None:
+        """Lightweight TF-IDF retrieval index (no PyTorch / FAISS)."""
+        docs = self._collect_documents(limit=_FALLBACK_MAX_DOCS)
+        if not docs:
+            self.backend = "empty (scrape a site first)"
+            return
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.preprocessing import normalize
+
+            vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1, sublinear_tf=True)
+            matrix = normalize(vectorizer.fit_transform([d["text"] for d in docs]))
+            self._tfidf = (vectorizer, matrix)
+            self.documents = docs
+            self.backend = f"tfidf-lite ({len(docs)} docs)"
+        except Exception as exc:  # pragma: no cover
+            print(f"[rag] tfidf build failed: {exc}")
             self.backend = "empty"
 
     def _collect_documents(self, limit: int | None = None) -> list[dict]:
@@ -123,7 +149,11 @@ class Retriever:
 
     @property
     def ready(self) -> bool:
-        return self._index is not None or self._matrix is not None
+        return (
+            self._index is not None
+            or self._matrix is not None
+            or self._tfidf is not None
+        )
 
     # -- search ------------------------------------------------------------
     def search(self, query: str, k: int = 4, intent: str | None = None) -> list[dict]:
@@ -131,20 +161,28 @@ class Retriever:
             return []
         import numpy as np
 
-        vec = self._get_embedder().encode([query], normalize_embeddings=True)
-        vec = np.asarray(vec, dtype="float32")
+        if self._tfidf is not None:
+            from sklearn.preprocessing import normalize
 
-        if self._index is not None:
-            scores, idxs = self._index.search(vec, k * 3)
-            candidates = [
-                {**self.documents[i], "score": float(s)}
-                for s, i in zip(scores[0], idxs[0])
-                if 0 <= i < len(self.documents)
-            ]
-        else:
-            sims = (self._matrix @ vec[0])
+            vectorizer, matrix = self._tfidf
+            qv = normalize(vectorizer.transform([query]))
+            sims = (matrix @ qv.T).toarray().ravel()
             order = np.argsort(sims)[::-1][: k * 3]
             candidates = [{**self.documents[i], "score": float(sims[i])} for i in order]
+        else:
+            vec = self._get_embedder().encode([query], normalize_embeddings=True)
+            vec = np.asarray(vec, dtype="float32")
+            if self._index is not None:
+                scores, idxs = self._index.search(vec, k * 3)
+                candidates = [
+                    {**self.documents[i], "score": float(s)}
+                    for s, i in zip(scores[0], idxs[0])
+                    if 0 <= i < len(self.documents)
+                ]
+            else:
+                sims = (self._matrix @ vec[0])
+                order = np.argsort(sims)[::-1][: k * 3]
+                candidates = [{**self.documents[i], "score": float(sims[i])} for i in order]
 
         # Rank by semantic score with a boost for real web content, because the
         # dataset's templated ideal_response answers are not reliably factual.

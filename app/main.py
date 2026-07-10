@@ -1,6 +1,7 @@
 """FastAPI application for the Educational Chatbot."""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -26,9 +27,29 @@ app.add_middleware(
 orchestrator = Orchestrator()
 
 
+@app.on_event("startup")
+def _warmup() -> None:
+    """Build the active institution's assistant in the background so the first
+    real request (and health checks) are fast and don't time out on deploy."""
+    threading.Thread(
+        target=lambda: orchestrator.get(settings.active_institution), daemon=True
+    ).start()
+
+
 @app.get("/api/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    assistant = orchestrator.get(settings.active_institution)
+    inst = settings.institution(settings.active_institution)
+    if not orchestrator.is_built(inst.code):
+        # Still warming up — respond fast with 200 so health checks pass.
+        return HealthResponse(
+            status="warming",
+            active_institution=inst.name,
+            intent_backend="loading",
+            generator_ready=False,
+            web_cache_pages=len(web_scraper.load_cache(inst.code)),
+            labels=[],
+        )
+    assistant = orchestrator.get(inst.code)
     return HealthResponse(
         status="ok",
         active_institution=assistant.inst.name,

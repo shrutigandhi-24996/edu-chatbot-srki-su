@@ -112,6 +112,11 @@ class Settings(BaseSettings):
     # Out-of-domain handling
     domain_guard_enabled: bool = True
 
+    # Lightweight mode: use TF-IDF (scikit-learn) for intent + retrieval instead
+    # of transformer/sentence-transformer embeddings. Ideal for low-RAM hosts
+    # (e.g. Render free tier, 512 MB) where PyTorch would run out of memory.
+    lite_mode: bool = False
+
     # Retrieval: the datasets' `ideal_response` values are templated filler and
     # NOT reliable factual answers, so by default only real scraped web content
     # is used to ground answers. Set true only if your Dataset B has real answers.

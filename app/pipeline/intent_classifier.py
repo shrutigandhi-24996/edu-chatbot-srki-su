@@ -32,15 +32,18 @@ class IntentClassifier:
         self.labels: list[str] = []
         self._pipe = None  # transformers pipeline
         self._embedder = None
-        self._centroids = None  # (labels, matrix)
+        self._centroids = None  # (labels, matrix) for embedding fallback
+        self._tfidf = None  # (vectorizer, labels, matrix) for lite fallback
         self._load()
 
     # -- loading -----------------------------------------------------------
     def _load(self) -> None:
         source = settings.intent_model_source(self.code)
-        if source and self._load_transformer(source):
+        if source and not settings.lite_mode and self._load_transformer(source):
             return
-        self._load_embedding_fallback()
+        if not settings.lite_mode and self._load_embedding_fallback():
+            return
+        self._load_tfidf_fallback()
 
     def _load_transformer(self, source: str) -> bool:
         try:
@@ -69,22 +72,29 @@ class IntentClassifier:
             print(f"[intent] transformer load failed ({source}): {exc}")
             return False
 
-    def _load_embedding_fallback(self) -> None:
-        label_map = _load_json(settings.processed_dir / _LABEL_FILE.format(code=self.code.lower()))
+    def _load_examples(self) -> tuple[dict | None, list[str]]:
+        label_map = _load_json(
+            settings.processed_dir / _LABEL_FILE.format(code=self.code.lower())
+        )
         examples = _load_json(
             settings.processed_dir / _EXAMPLES_FILE.format(code=self.code.lower())
         )
-        if label_map:
-            self.labels = label_map.get("labels", [])
+        labels = label_map.get("labels", []) if label_map else []
+        return examples, labels
+
+    def _load_embedding_fallback(self) -> bool:
+        examples, labels = self._load_examples()
+        if labels:
+            self.labels = labels
         if not examples:
-            self.backend = "none (run scripts/prepare_data.py)"
-            return
+            return False
         try:
             import numpy as np
-            from sentence_transformers import SentenceTransformer
 
-            self._embedder = SentenceTransformer(settings.embedding_model)
-            labels: list[str] = []
+            from app.pipeline.embedding import get_shared_embedder
+
+            self._embedder = get_shared_embedder()
+            centroid_labels: list[str] = []
             vectors = []
             for intent, texts in examples.items():
                 if not texts:
@@ -93,21 +103,58 @@ class IntentClassifier:
                     texts, normalize_embeddings=True, show_progress_bar=False
                 )
                 vectors.append(np.mean(emb, axis=0))
-                labels.append(intent)
+                centroid_labels.append(intent)
             matrix = np.vstack(vectors)
-            # renormalize centroids
             matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
-            self._centroids = (labels, matrix)
+            self._centroids = (centroid_labels, matrix)
             if not self.labels:
-                self.labels = labels
+                self.labels = centroid_labels
             self.backend = "embedding-fallback"
+            return True
         except Exception as exc:  # pragma: no cover
             print(f"[intent] embedding fallback failed: {exc}")
+            return False
+
+    def _load_tfidf_fallback(self) -> None:
+        """Lightweight TF-IDF nearest-centroid classifier (no PyTorch)."""
+        examples, labels = self._load_examples()
+        if labels:
+            self.labels = labels
+        if not examples:
+            self.backend = "none (run scripts/prepare_data.py)"
+            return
+        try:
+            import numpy as np
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            from sklearn.preprocessing import normalize
+
+            corpus: list[str] = []
+            row_labels: list[str] = []
+            for intent, texts in examples.items():
+                for t in texts:
+                    corpus.append(t)
+                    row_labels.append(intent)
+            vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=1, sublinear_tf=True)
+            tfidf = vectorizer.fit_transform(corpus)
+            tfidf = normalize(tfidf)
+            centroid_labels = sorted(set(row_labels))
+            mats = []
+            for intent in centroid_labels:
+                idx = [i for i, l in enumerate(row_labels) if l == intent]
+                mats.append(np.asarray(tfidf[idx].mean(axis=0)).ravel())
+            matrix = np.vstack(mats)
+            matrix = matrix / (np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-9)
+            self._tfidf = (vectorizer, centroid_labels, matrix)
+            if not self.labels:
+                self.labels = centroid_labels
+            self.backend = "tfidf-lite"
+        except Exception as exc:  # pragma: no cover
+            print(f"[intent] tfidf fallback failed: {exc}")
             self.backend = "none"
 
     @property
     def ready(self) -> bool:
-        return self._pipe is not None or self._centroids is not None
+        return self._pipe is not None or self._centroids is not None or self._tfidf is not None
 
     # -- prediction --------------------------------------------------------
     def predict(self, text: str) -> tuple[str, float]:
@@ -126,6 +173,8 @@ class IntentClassifier:
             return self._predict_transformer(text)
         if self._centroids is not None:
             return self._predict_embedding(text)
+        if self._tfidf is not None:
+            return self._predict_tfidf(text)
         return []
 
     def _predict_transformer(self, text: str) -> list[tuple[str, float]]:
@@ -142,5 +191,15 @@ class IntentClassifier:
         labels, matrix = self._centroids
         vec = self._embedder.encode([text], normalize_embeddings=True)[0]
         sims = matrix @ vec  # cosine (both normalized)
+        order = np.argsort(sims)[::-1]
+        return [(labels[i], float(sims[i])) for i in order]
+
+    def _predict_tfidf(self, text: str) -> list[tuple[str, float]]:
+        import numpy as np
+        from sklearn.preprocessing import normalize
+
+        vectorizer, labels, matrix = self._tfidf
+        vec = normalize(vectorizer.transform([text]))
+        sims = (matrix @ vec.T).ravel()
         order = np.argsort(sims)[::-1]
         return [(labels[i], float(sims[i])) for i in order]

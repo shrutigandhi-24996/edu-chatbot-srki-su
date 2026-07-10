@@ -2,15 +2,13 @@ services:
   - type: web
     name: edu-chatbot
     runtime: docker
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./deploy/Dockerfile.render
     plan: free
+    healthCheckPath: /api/health
     envVars:
       - key: ACTIVE_INSTITUTION
         value: SRKI
-      - key: USE_GENERATOR
-        value: "false"
-      # Set these to your Hugging Face model repos once trained:
-      # - key: SRKI_INTENT_MODEL
-      #   value: your-user/srki-intent-roberta
-      # - key: SRKI_GENERATOR_MODEL
-      #   value: your-user/srki-generator
+      - key: LITE_MODE
+        value: "true"
+      - key: WEB_MAX_PAGES
+        value: "25"

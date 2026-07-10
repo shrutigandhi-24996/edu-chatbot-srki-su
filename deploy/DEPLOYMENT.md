@@ -19,12 +19,34 @@ Hugging Face Hub, then deploy the app to a free host that gives you a public URL
 
 The chat UI is at `/`, health at `/api/health`, and the API at `/api/chat`.
 
-## Alternative: Render (Docker, free tier)
+## Render (Docker, free tier) — step by step
 
-- Push this repo to GitHub.
-- On Render: **New → Web Service → Build from Dockerfile**. `render.yaml` is
-  already provided. Add the same model env vars. Render gives you an
-  `https://edu-chatbot.onrender.com`-style URL.
+Render's free tier has **512 MB RAM**, which is too small for PyTorch. This repo
+therefore ships a **lightweight TF-IDF mode** (`LITE_MODE=true`, no PyTorch) used
+by `deploy/Dockerfile.render`. Answer quality is a bit lower than the full
+embedding/transformer mode, but it runs comfortably in free-tier RAM.
+
+Steps (repo already on GitHub at `shrutigandhi-24996/edu-chatbot-srki-su`):
+
+1. Go to <https://dashboard.render.com> and sign in with **GitHub**.
+2. Click **New → Blueprint** (recommended). Render reads `render.yaml`
+   automatically.  *(Or **New → Web Service → Build from a Git repository** and
+   set Docker + `dockerfilePath: deploy/Dockerfile.render`.)*
+3. Select the repository **edu-chatbot-srki-su** and approve access.
+4. Confirm the plan is **Free** and click **Apply / Create**.
+5. Wait for the first build + deploy (a few minutes). Your public URL will look
+   like `https://edu-chatbot.onrender.com`.
+
+One-click blueprint link:
+`https://render.com/deploy?repo=https://github.com/shrutigandhi-24996/edu-chatbot-srki-su`
+
+Notes:
+- Free instances **sleep after ~15 min idle**; the first request after sleeping
+  takes ~30–60 s to wake and warm up.
+- The app scrapes the official site on startup (`WEB_MAX_PAGES=25`) and builds a
+  TF-IDF index in memory — no model files needed.
+- For **full quality** (embeddings + your trained BERT/RoBERTa/T5 models), use
+  Hugging Face Spaces instead (root `Dockerfile`, more RAM).
 
 ## Alternative: quick temporary public link from your PC
 
