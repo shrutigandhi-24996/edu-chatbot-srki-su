@@ -46,21 +46,16 @@ function addMessage(role, content, meta) {
   const wrap = document.createElement("div");
   wrap.className = `msg ${role}`;
   const avatar = role === "bot" ? "🎓" : "🧑";
-  let metaHtml = "";
-  if (meta) {
-    const tags = [];
-    if (meta.intent) tags.push(`<span class="tag ${meta.in_domain === false ? "ood" : ""}">${meta.intent}</span>`);
-    if (typeof meta.confidence === "number") tags.push(`<span class="tag">conf ${meta.confidence.toFixed(2)}</span>`);
-    if (meta.source) tags.push(`<span class="tag">${meta.source}</span>`);
-    let srcHtml = "";
-    if (meta.sources && meta.sources.length) {
-      srcHtml = `<div class="sources">Sources: ` +
-        meta.sources.map((s) => `<a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.title || s.url)}</a>`).join(" · ") +
-        `</div>`;
-    }
-    metaHtml = `<div class="meta">${tags.join("")}</div>${srcHtml}`;
+  let srcHtml = "";
+  // Show source links to users; hide internal intent/confidence tags.
+  if (role === "bot" && meta && meta.sources && meta.sources.length) {
+    srcHtml = `<div class="sources">Learn more: ` +
+      meta.sources.slice(0, 2).map((s) =>
+        `<a href="${s.url}" target="_blank" rel="noopener">${escapeHtml(s.title || "Official page")}</a>`
+      ).join(" · ") +
+      `</div>`;
   }
-  wrap.innerHTML = `<div class="avatar">${avatar}</div><div class="bubble">${renderMarkdown(content)}${metaHtml}</div>`;
+  wrap.innerHTML = `<div class="avatar">${avatar}</div><div class="bubble">${renderMarkdown(content)}${srcHtml}</div>`;
   els.messages.appendChild(wrap);
   els.messages.scrollTop = els.messages.scrollHeight;
   return wrap;
@@ -104,8 +99,14 @@ async function checkHealth() {
   try {
     const res = await fetch("/api/health");
     const h = await res.json();
+    if (h.status === "warming") {
+      els.statusDot.className = "dot";
+      els.statusText.textContent = "Starting up…";
+      setTimeout(checkHealth, 4000);
+      return;
+    }
     els.statusDot.className = "dot ok";
-    els.statusText.textContent = `${h.intent_backend}`;
+    els.statusText.textContent = h.llm_brain ? "Online · Smart answers" : "Online · Ready to help";
   } catch (e) {
     els.statusDot.className = "dot err";
     els.statusText.textContent = "Offline";
@@ -153,6 +154,6 @@ els.suggestions.addEventListener("click", (e) => {
 (async function init() {
   await loadInstitutions();
   await checkHealth();
-  addMessage("bot", "Hello! I'm your educational assistant. Ask me about admissions, courses, fees, exams, faculty, placements, or campus facilities. 🎓");
+  addMessage("bot", "Hello! 👋 I'm your **SRKI educational assistant**.\n\nAsk me about admissions, courses, fees, exams, placements, or how to contact the college. Pick a suggestion on the left, or type your question below.");
   els.input.focus();
 })();

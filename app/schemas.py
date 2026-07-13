@@ -32,5 +32,6 @@ class HealthResponse(BaseModel):
     active_institution: str
     intent_backend: str
     generator_ready: bool
+    llm_brain: bool = False
     web_cache_pages: int
     labels: list[str]

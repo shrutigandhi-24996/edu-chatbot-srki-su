@@ -55,6 +55,7 @@ def health() -> HealthResponse:
         active_institution=assistant.inst.name,
         intent_backend=assistant.intent.backend,
         generator_ready=assistant.generator.ready,
+        llm_brain=assistant.brain.ready,
         web_cache_pages=len(web_scraper.load_cache(assistant.inst.code)),
         labels=assistant.intent.labels,
     )

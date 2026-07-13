@@ -12,3 +12,7 @@ services:
         value: "true"
       - key: WEB_MAX_PAGES
         value: "25"
+      # Add your free Groq key in the Render dashboard (Environment tab) so the
+      # chatbot writes helpful, grounded answers. Get one at console.groq.com/keys
+      - key: GROQ_API_KEY
+        sync: false

@@ -112,6 +112,21 @@ class Settings(BaseSettings):
     # Out-of-domain handling
     domain_guard_enabled: bool = True
 
+    # --- LLM answer brain (Groq, OpenAI-compatible) ----------------------
+    # When a GROQ_API_KEY is set, answers are written by a free hosted LLM,
+    # grounded on the scraped official-site content. No GPU / minimal RAM, so it
+    # works on Render free tier. Leave the key empty to use the offline behavior.
+    use_llm_brain: bool = True
+    groq_api_key: str = ""
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_model: str = "llama-3.3-70b-versatile"
+    llm_temperature: float = 0.3
+    llm_max_tokens: int = 600
+    llm_request_timeout: int = 30
+
+    def llm_brain_enabled(self) -> bool:
+        return self.use_llm_brain and bool(self.groq_api_key.strip())
+
     # Lightweight mode: use TF-IDF (scikit-learn) for intent + retrieval instead
     # of transformer/sentence-transformer embeddings. Ideal for low-RAM hosts
     # (e.g. Render free tier, 512 MB) where PyTorch would run out of memory.

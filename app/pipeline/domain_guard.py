@@ -49,6 +49,13 @@ def is_greeting(text: str) -> bool:
     return normalize(text) in GREETINGS
 
 
+def is_hard_off_topic(text: str) -> bool:
+    """Only the obvious non-educational cases (used when the LLM brain handles
+    the softer domain judgement itself)."""
+    norm = normalize(text)
+    return any(k in norm for k in OFF_TOPIC_KEYWORDS)
+
+
 def out_of_domain_message(inst: Institution) -> str:
     return (
         f"I'm an **educational assistant for {inst.full_name} ({inst.name})** and its "

@@ -17,6 +17,20 @@ from app.pipeline import web_scraper
 
 _FALLBACK_MAX_DOCS = 8000  # cap for on-the-fly index (keeps CPU build fast)
 
+# Boost pages whose URL matches the detected intent (better factual answers).
+_INTENT_URL_HINTS: dict[str, tuple[str, ...]] = {
+    "admission_query": ("admission", "apply", "prospectus", "merit"),
+    "fee_structure": ("fee", "fees", "structure"),
+    "course_info": ("courses-offered", "courses", "program"),
+    "contact_info": ("contact", "inquiry"),
+    "exam_schedule": ("exam", "timetable", "question-paper"),
+    "result_query": ("result", "merit"),
+    "placement_info": ("placement", "career"),
+    "faculty_info": ("faculty", "department"),
+    "event_info": ("event", "notice", "news"),
+    "infrastructure_info": ("campus", "hostel", "facility", "history"),
+}
+
 
 class Retriever:
     def __init__(self, inst: Institution) -> None:
@@ -184,12 +198,29 @@ class Retriever:
                 order = np.argsort(sims)[::-1][: k * 3]
                 candidates = [{**self.documents[i], "score": float(sims[i])} for i in order]
 
-        # Rank by semantic score with a boost for real web content, because the
-        # dataset's templated ideal_response answers are not reliably factual.
+        # Rank by semantic score with boosts for web content and intent-matching URLs.
+        hints = _INTENT_URL_HINTS.get(intent or "", ())
         for c in candidates:
             boost = 0.08 if c.get("source") == "web" else 0.0
             if intent and c.get("intent") == intent:
                 boost += 0.02
+            url = (c.get("url") or "").lower()
+            if hints and any(h in url for h in hints):
+                boost += 0.12
             c["_rank"] = c.get("score", 0.0) + boost
         candidates.sort(key=lambda c: c["_rank"], reverse=True)
         return candidates[:k]
+
+    def pages_for_intent(self, intent: str, k: int = 2) -> list[dict]:
+        """Return cached web docs whose URL matches the intent (reliable fallback)."""
+        hints = _INTENT_URL_HINTS.get(intent or "", ())
+        if not hints or not self.documents:
+            return []
+        matched: list[dict] = []
+        for doc in self.documents:
+            url = (doc.get("url") or "").lower()
+            if doc.get("source") == "web" and any(h in url for h in hints):
+                rank = min(i for i, h in enumerate(hints) if h in url)
+                matched.append({**doc, "score": 0.95 - rank * 0.01})
+        matched.sort(key=lambda d: -d["score"])
+        return matched[:k]
